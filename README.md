@@ -1,5 +1,5 @@
-# log_extractor
-ART log extractor
+# log-extractor
+ART log extractor, download a job artifacts, unpack all archives and parse relevant logs.
 
 # Install
 sudo pip install . -U
