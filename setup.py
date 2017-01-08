@@ -10,7 +10,7 @@ SCRIPT = (
 )
 
 setup(
-    name='log-extractor',
+    name='log_extractor',
     version='1.0',
     packages=find_packages(),
     include_package_data=True,
@@ -22,6 +22,6 @@ setup(
     ],
     entry_points='''
         [console_scripts]
-        {script_name}=log_extractor:run
+        {script_name}=log_extractor.log_extractor:run
     '''.format(script_name=SCRIPT_NAME),
 )
