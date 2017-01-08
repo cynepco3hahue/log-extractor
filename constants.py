@@ -14,9 +14,12 @@ FIELD_TEARDOWN = 'PACKAGE TEARDOWN'
 
 LOG_ART_RUNNER = 'art_test_runner.log'
 LOG_ENGINE = 'engine.log'
-LOG_VDSM = 'vdsm.log'
-LOG_SUPERVDSM = 'supervdsm.log'
 
 TS_FORMAT = '%Y-%m-%d %H:%M:%S,%f'
 TS_START = 'start_timestamp'
 TS_END = 'end_timestamp'
+
+HOST_LOGS = ["vdsm.log", "supervdsm.log"]
+DEFAULT_LOGS = HOST_LOGS + [LOG_ENGINE]
+
+JENKINS_URL = "https://rhev-jenkins.rhev-ci-vms.eng.rdu2.redhat.com"

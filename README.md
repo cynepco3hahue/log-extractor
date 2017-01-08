@@ -5,4 +5,4 @@ ART log extractor
 sudo pip install . -U
 
 # Usage:
-log-extractor --view 4.1_dev --job rhv-master-ge-runner-network --build 275
+log-extractor --job rhv-master-ge-runner-network --build 275 --team networking --logs engine.log,vdsm.log

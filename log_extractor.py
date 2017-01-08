@@ -5,45 +5,30 @@
 Log extractor for Jenkins jobs
 """
 
-
-import os
+import datetime
 import glob
+import os
+import shutil
 import ssl
 import tarfile
-import shutil
 import tempfile
 import user
+from collections import OrderedDict
+
+import click
 import jenkins as jenkins_api
 import pyunpack
-import datetime
 from natsort import natsorted
-from collections import OrderedDict
-import click
 
 import constants as const
 import helper
 
-TEST_LOGS = ["vdsm.log", "engine.log", "supervdsm.log"]
-HOST_SPECIFIC_LOGS = ["vdsm.log", "supervdsm.log"]
-
-
-class Version(object):
-    """
-
-    """
-    def __init__(self, version):
-        """
-
-        Args:
-            version:
-        """
-        self.major, self.minor = version.split('.')
-
 
 class LogExtractor(object):
     """
-    extract logs from Jenkins jobs
+    Class to extract and parse relevant logs from the Jenkins job
     """
+
     def __init__(self, dst, logs):
         self.dst = dst
         self.logs = logs
@@ -53,13 +38,13 @@ class LogExtractor(object):
     @staticmethod
     def _is_archive(path):
         """
-        Check if file is archive
+        Check if the file is archive
 
         Args:
-            path (str): File path
+            path (str): Path to the file
 
         Returns:
-            bool: True if file is archive
+            bool: True, if the file is archive, otherwise False
         """
         f_ext = os.path.splitext(path)[1]
         return f_ext in const.ARCHIVE_EXTENSIONS or tarfile.is_tarfile(path)
@@ -67,45 +52,43 @@ class LogExtractor(object):
     @staticmethod
     def _is_host_log(path):
         """
-        Check if file is host logs
+        Check if the file is host log
 
         Args:
-            path (str): File path
+            path (str): Path to the file
 
         Returns:
-            bool: True if file is host log
+            bool: True, if the file is host log, otherwise False
         """
-        for pattern in HOST_SPECIFIC_LOGS:
+        for pattern in const.HOST_LOGS:
             if pattern in path:
                 return True
         return False
 
     def _is_relevant_file(self, path):
         """
-        Check if file is log file that we want to process
+        Check if the file is relevant log
 
         Args:
-            path (str): File path
+            path (str): Path to the file
 
         Returns:
-            bool: True if file is relevant
+            bool: True, if the file is relevant log, otherwise False
         """
         for pattern in self.logs:
             if '/{0}'.format(pattern) in path:
                 return True
         return False
 
-    @staticmethod
-    def _generate_host_log_name(path, dst):
+    def _generate_host_log_name(self, path):
         """
-
+        Generate host log name, hostname_logname.log
 
         Args:
-            path (str): File path
-            dst (str): New file destination
+            path (str): Path to the host file
 
         Returns:
-            str: New file path
+            str: New host log name
         """
         f_basename = os.path.basename(path)
         next_dir = False
@@ -117,15 +100,15 @@ class LogExtractor(object):
             if dir_name in ['logs', 'hosts-logs']:
                 next_dir = True
         f_new_basename = "{0}_{1}".format(prefix, f_basename)
-        return os.path.join(dst, f_new_basename)
+        return os.path.join(self.dst, f_new_basename)
 
-    def extract_all(self, path, dst):
+    def extract_all(self, path):
         """
-        extract all archives
+        Extract recursively all archives under the path directory and
+        copy all relevant files to the path directory
 
         Args:
-            path (str): File path
-            dst (str): Destination to extract the file
+            path (str): Path to the directory
         """
         for root, dirs, files in os.walk(path):
             for f in files:
@@ -138,26 +121,27 @@ class LogExtractor(object):
                     )
                     f_path = dst_path
                     if os.path.isdir(f_path):
-                        self.extract_all(f_path, dst)
+                        self.extract_all(f_path)
                 if os.path.isfile(f_path) and self._is_relevant_file(f_path):
                     dst_path = os.path.join(self.dst, os.path.basename(f_path))
                     if self._is_host_log(f_path):
-                        dst_path = self._generate_host_log_name(f_path, dst)
+                        dst_path = self._generate_host_log_name(f_path)
                     if f_path != dst_path and not self._is_archive(f_path):
                         shutil.copy(f_path, dst_path)
             if dirs:
                 for dir_name in dirs:
-                    self.extract_all(dir_name, dst)
+                    self.extract_all(dir_name)
 
     @classmethod
     def _get_art_log_ts(cls, line):
         """
+        Parse ART log timestamp
 
         Args:
-            line (str):
+            line (str): File line
 
         Returns:
-
+            datetime: ART log timestamp
         """
         return datetime.datetime.strptime(
             line.split(' - ')[0], const.TS_FORMAT
@@ -166,12 +150,13 @@ class LogExtractor(object):
     @classmethod
     def _get_engine_log_ts(cls, line):
         """
+        Get engine log timestamp
 
         Args:
-            line:
+            line (str): File line
 
         Returns:
-
+            datetime: Engine log timestamp
         """
         try:
             ts = line.split()[:2]
@@ -186,12 +171,13 @@ class LogExtractor(object):
     @classmethod
     def _get_log_ts(cls, line):
         """
+        Get log timestamp
 
         Args:
-            line:
+            line (str): File line
 
         Returns:
-
+            datetime: Log timestamp
         """
         try:
             return datetime.datetime.strptime(
@@ -203,23 +189,25 @@ class LogExtractor(object):
     @staticmethod
     def _get_host_log_prefix(file_name):
         """
+        Get host log prefix
 
         Args:
-            file_name:
+            file_name: File name
 
         Returns:
-
+            str: Host log prefix
         """
         return os.path.basename(file_name).split('_')[0]
 
     def _define_tss(self, test_name):
         """
+        Define start, end and next test start timestamps
 
         Args:
-            test_name:
+            test_name (str): Test name
 
         Returns:
-
+            tuple: Start, end and next test start timestamps
         """
         test_start_ts = (
             self.tss[test_name][const.TS_START] - datetime.timedelta(minutes=1)
@@ -234,14 +222,12 @@ class LogExtractor(object):
 
     def _write_art_log(self, t_file, test_dir_name, ts):
         """
+        Write ART log from temporary file to persist file
 
         Args:
-            t_file:
-            test_dir_name:
-            ts:
-
-        Returns:
-
+            t_file (TemporaryFile): Temporary ART log file
+            test_dir_name (str): Test directory name
+            ts (datetime): ART log timestamp
         """
         t_file.seek(0)
         art_runner_file = os.path.join(
@@ -255,12 +241,13 @@ class LogExtractor(object):
     @staticmethod
     def _get_team_dir_index(test_path):
         """
+        Get team directory index
 
         Args:
-            test_path:
+            test_path (list): Test path
 
         Returns:
-
+            int: Get team index from the test path
         """
         for team in const.TEAMS:
             if team in test_path:
@@ -269,9 +256,10 @@ class LogExtractor(object):
 
     def _create_test_dir(self, line):
         """
+        Create test directory
 
         Args:
-            line:
+            line (str): Test name line
 
         Returns:
 
@@ -297,35 +285,35 @@ class LogExtractor(object):
             '{0}/{1}*'.format(self.dst, const.LOG_ART_RUNNER)
         )
         art_runner_files = natsorted(art_runner_files, reverse=True)
-        start_write = False
+
         t_file = None
         ts = None
         last_ts = None
         test_dir_name = None
         relevant_team = False
+        start_write = False
         stop_parsing = False
+
         for art_runner_file in art_runner_files:
-            print 'parse file %s' % art_runner_file
+            print 'parse file {0}'.format(art_runner_file)
             with open(art_runner_file) as f:
                 for line in f:
                     if const.FIELD_SETUP in line:
                         ts = self._get_art_log_ts(line=line)
                         start_write = True
-                        if test_dir_name:
+                        if t_file and not t_file.closed:
                             self._write_art_log(
                                 t_file=t_file,
                                 test_dir_name=test_dir_name,
                                 ts=ts
                             )
-                        if t_file:
-                            t_file.close()
                         t_file = tempfile.TemporaryFile(mode='w+')
 
-                    if start_write:
+                    if t_file and not t_file.closed and start_write:
                         t_file.write(line)
 
                     if const.FIELD_TEST_NAME in line:
-                        if team is None or team in line:
+                        if team is None or '.{0}.'.format(team) in line:
                             relevant_team = True
                             test_dir_name = self._create_test_dir(line=line)
                             self.tss[test_dir_name] = {}
@@ -334,8 +322,7 @@ class LogExtractor(object):
                             if relevant_team:
                                 stop_parsing = True
                                 break
-                            relevant_team = False
-                            test_dir_name = None
+                            t_file.close()
 
                     if const.FIELD_TEARDOWN in line and relevant_team:
                         last_ts = self._get_art_log_ts(line)
@@ -343,7 +330,7 @@ class LogExtractor(object):
             if stop_parsing:
                 break
 
-        if test_dir_name:
+        if t_file and not t_file.closed:
             self._write_art_log(
                 t_file=t_file, test_dir_name=test_dir_name, ts=last_ts
             )
@@ -357,53 +344,50 @@ class LogExtractor(object):
 
         cur_t_file = None
         next_t_file = None
-        for log in self.logs:
-            if log == const.LOG_ART_RUNNER:
+        tests_iter = None
+        cur_test_name = None
+        start_ts = None
+        end_ts = None
+        next_start_ts = None
+        temp_log_name = ''
+        stop_parsing = False
+        start_write = False
+
+        for log_name in self.logs:
+            if log_name == const.LOG_ART_RUNNER:
                 continue
 
-            print '==== Parse %s\'s ====' % log
+            print '==== Parse {0}\'s ===='.format(log_name)
 
             search_pattern = '{0}/{1}*'
-            if self._is_host_log(path=log):
+            if self._is_host_log(path=log_name):
                 search_pattern = '{0}/*_{1}*'
-            log_files = glob.glob(search_pattern.format(self.dst, log))
+            log_files = glob.glob(search_pattern.format(self.dst, log_name))
             if not log_files:
                 continue
 
             log_files = natsorted(log_files, reverse=True)
-            if log == const.LOG_ENGINE:
+            if log_name == const.LOG_ENGINE:
                 log_files = natsorted(log_files)
                 log_files.insert(len(log_files) - 1, log_files.pop(0))
-
-            tests_iter = iter(self.tss.keys())
-            cur_test_name = tests_iter.next()
-
-            if cur_t_file:
-                cur_t_file.close()
-            if next_t_file:
-                next_t_file.close()
-            cur_t_file = tempfile.TemporaryFile(mode='w+')
-            next_t_file = tempfile.TemporaryFile(mode='w+')
-            start_ts, end_ts, next_start_ts = self._define_tss(
-                test_name=cur_test_name
-            )
-            start_write = False
-            stop_parsing = False
 
             log_prefix = ''
             temp_log_prefix = ''
             for log_file in log_files:
-                print 'parse file %s' % log_file
-                new_file_name = log
-                if self._is_host_log(path=log):
+                print 'parse file {0}'.format(log_file)
+                new_file_name = log_name
+                if self._is_host_log(path=log_name):
                     log_prefix = self._get_host_log_prefix(file_name=log_file)
                     new_file_name = '{0}_{1}'.format(log_prefix, new_file_name)
-                if temp_log_prefix and log_prefix != temp_log_prefix:
+                if (
+                    (temp_log_name != log_name) or
+                    (log_prefix != temp_log_prefix)
+                ):
                     tests_iter = iter(self.tss.keys())
                     cur_test_name = tests_iter.next()
-                    if cur_t_file:
+                    if cur_t_file and not cur_t_file.closed:
                         cur_t_file.close()
-                    if next_t_file:
+                    if next_t_file and not next_t_file.closed:
                         next_t_file.close()
                     cur_t_file = tempfile.TemporaryFile(mode='w+')
                     next_t_file = tempfile.TemporaryFile(mode='w+')
@@ -412,7 +396,9 @@ class LogExtractor(object):
                     )
                     start_write = False
                     stop_parsing = False
-                temp_log_prefix = log_prefix
+                    temp_log_name = log_name
+                    temp_log_prefix = log_prefix
+
                 if stop_parsing:
                     continue
 
@@ -458,7 +444,11 @@ class LogExtractor(object):
     "--folder", help="Folder path to save the logs",
     default=os.path.join(user.home, "art-tests-logs")
 )
-def run(job, build, folder):
+@click.option("--logs", help="List of logs to parse(vdsm.log,engine.log,...)")
+@click.option(
+    "--team", type=click.Choice(const.TEAMS), help="Team logs to parse"
+)
+def run(job, build, folder, logs, team):
     """
     Extract logs from Jenkins jobs.
     """
@@ -470,8 +460,7 @@ def run(job, build, folder):
             Jenkins: Jenkins connection
         """
         ssl._create_default_https_context = ssl._create_unverified_context
-        server = "https://rhev-jenkins.rhev-ci-vms.eng.rdu2.redhat.com"
-        return jenkins_api.Jenkins(url=server)
+        return jenkins_api.Jenkins(url=const.JENKINS_URL)
 
     jenkins_connection = get_jenkins_connection()
     build_info = jenkins_connection.get_build_info(name=job, number=build)
@@ -489,9 +478,10 @@ def run(job, build, folder):
         os.mkdir(build_folder)
 
     helper.download_artifact(job_url=job_url, dst=build_folder)
-    log_extractor = LogExtractor(dst=build_folder, logs=TEST_LOGS)
-    log_extractor.extract_all(path=build_folder, dst=build_folder)
-    log_extractor.parse_art_logs()
+    logs = logs.split(",") if logs else const.DEFAULT_LOGS
+    log_extractor = LogExtractor(dst=build_folder, logs=logs)
+    log_extractor.extract_all(path=build_folder)
+    log_extractor.parse_art_logs(team=team)
     log_extractor.parse_logs()
     print "Logs was extracted to {folder}".format(folder=build_folder)
 
