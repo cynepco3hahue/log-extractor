@@ -1,9 +1,14 @@
+#! /usr/bin/python
+# -*- coding: utf-8 -*-
+
 """
 Helper file for the log extractor
 """
+import ConfigParser
 import os
-import constants as const
 import pycurl
+
+import constants as const
 
 
 def download_artifact(job_url, dst):
@@ -30,3 +35,13 @@ def download_artifact(job_url, dst):
         print "Download artifacts from the link {0}".format(job_url)
         conn.perform()
         conn.close()
+
+
+def get_jenkins_server():
+    """
+    Get jenkins server from config file
+    """
+    config = ConfigParser.RawConfigParser()
+    config.read(const.JENKINS_CONF)
+    return config.get("SETTING", "server")
+
