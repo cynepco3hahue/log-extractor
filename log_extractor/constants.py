@@ -21,5 +21,3 @@ TS_END = 'end_timestamp'
 
 HOST_LOGS = ["vdsm.log", "supervdsm.log"]
 DEFAULT_LOGS = HOST_LOGS + [LOG_ENGINE]
-
-JENKINS_URL = "https://rhev-jenkins.rhev-ci-vms.eng.rdu2.redhat.com"

@@ -436,6 +436,7 @@ class LogExtractor(object):
 
 
 @click.command()
+@click.option("--jenkins", help="Jenkins URL", required=True)
 @click.option("--job", help="Job name", required=True)
 @click.option(
     "--build", help="build number of the job", required=True, type=int
@@ -461,7 +462,7 @@ class LogExtractor(object):
         "team it will parse log for all teams"
     )
 )
-def run(job, build, folder, logs, team):
+def run(jenkins, job, build, folder, logs, team):
     """
     Extract logs from Jenkins jobs.
     """
@@ -473,7 +474,7 @@ def run(job, build, folder, logs, team):
             Jenkins: Jenkins connection
         """
         ssl._create_default_https_context = ssl._create_unverified_context
-        return jenkins_api.Jenkins(url=const.JENKINS_URL)
+        return jenkins_api.Jenkins(url=jenkins)
 
     jenkins_connection = get_jenkins_connection()
     build_info = jenkins_connection.get_build_info(name=job, number=build)
