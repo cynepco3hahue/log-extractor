@@ -30,7 +30,7 @@ def download_artifact(job_url, dst):
         conn = pycurl.Curl()
         conn.setopt(conn.SSL_VERIFYHOST, False)
         conn.setopt(conn.SSL_VERIFYPEER, False)
-        conn.setopt(conn.URL, "%s/%s" % (job_url, const.JOB_ARTIFACT_ZIP))
+        conn.setopt(conn.URL, str("%s/%s" % (job_url, const.JOB_ARTIFACT_ZIP)))
         conn.setopt(conn.WRITEDATA, f)
         print "Download artifacts from the link {0}".format(job_url)
         conn.perform()
