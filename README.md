@@ -8,7 +8,7 @@ Jenkins config file `~/.jenkins.config` should be under user home directory and 
 
 ```
 [SETTING]
-server=https://rhev-jenkins.rhev-ci-vms.eng.rdu2.redhat.com
+server=https://jenkins.example.com
 ```
 
 # Usage:
