@@ -319,10 +319,10 @@ class LogExtractor(object):
                             self.tss[test_dir_name] = {}
                             self.tss[test_dir_name][const.TS_START] = ts
                         else:
+                            t_file.close()
                             if relevant_team:
                                 stop_parsing = True
                                 break
-                            t_file.close()
 
                     if const.FIELD_TEARDOWN in line and relevant_team:
                         last_ts = self._get_art_log_ts(line)
