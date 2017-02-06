@@ -113,7 +113,11 @@ class LogExtractor(object):
         for root, dirs, files in os.walk(path):
             for f in files:
                 f_path = os.path.join(root, f)
-                if self._is_archive(f_path) and os.path.getsize(f_path) != 0:
+                if (
+                    not os.path.islink(f_path) and
+                    self._is_archive(f_path) and
+                    os.path.getsize(f_path) != 0
+                ):
                     dst_path = os.path.splitext(f_path)[0]
                     print '==== Unpack the file %s ====' % f_path
                     pyunpack.Archive(f_path).extractall(
