@@ -323,7 +323,8 @@ class LogExtractor(object):
                             self.tss[test_dir_name] = {}
                             self.tss[test_dir_name][const.TS_START] = ts
                         else:
-                            t_file.close()
+                            if t_file and not t_file.closed:
+                                t_file.close()
                             if relevant_team:
                                 stop_parsing = True
                                 break
