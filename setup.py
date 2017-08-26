@@ -19,6 +19,7 @@ setup(
         'pyunpack',
         'natsort',
         'jenkinsapi',
+        'python-jenkins'
     ],
     entry_points='''
         [console_scripts]
