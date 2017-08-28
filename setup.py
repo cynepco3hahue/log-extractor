@@ -19,7 +19,8 @@ setup(
         'pyunpack',
         'natsort',
         'jenkinsapi',
-        'python-jenkins'
+        'python-jenkins',
+        'patool'
     ],
     entry_points='''
         [console_scripts]
