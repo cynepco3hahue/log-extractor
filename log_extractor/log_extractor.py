@@ -268,7 +268,7 @@ class LogExtractor(object):
         Returns:
 
         """
-        test_path = line.split(' - ')[-1].split('.')
+        test_path = line.split(': ')[-1].split('.')
         team_index = self._get_team_dir_index(
             test_path=test_path
         )
@@ -317,7 +317,9 @@ class LogExtractor(object):
                         t_file.write(line)
 
                     if const.FIELD_TEST_NAME in line:
-                        if team is None or '.{0}.'.format(team) in line:
+                        if (
+                            team is None or '.{0}.'.format(team) in line
+                        ) and ts:
                             relevant_team = True
                             test_dir_name = self._create_test_dir(line=line)
                             self.tss[test_dir_name] = {}
