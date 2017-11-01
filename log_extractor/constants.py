@@ -11,7 +11,7 @@ import user
 JOB_ARTIFACT = 'artifact'
 JOB_ARTIFACT_ZIP = '{0}/*zip*/archive.zip'.format(JOB_ARTIFACT)
 ARCHIVE_EXTENSIONS = ['.gz', '.zip', '.xz', '.tar', '.bz2']
-TEAMS = ['sla', 'virt', 'networking', 'storage', 'system', 'coresystem']
+TEAMS = ['compute', 'networking', 'storage', 'system', 'coresystem']
 FIELD_TEST_NAME = 'Test Name'
 FIELD_SETUP = 'SETUP <'
 FIELD_TEARDOWN = 'TEARDOWN <'
