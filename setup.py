@@ -20,7 +20,8 @@ setup(
         'natsort',
         'jenkinsapi',
         'python-jenkins',
-        'patool'
+        'patool',
+        'pycurl'
     ],
     entry_points='''
         [console_scripts]
