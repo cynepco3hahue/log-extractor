@@ -285,9 +285,16 @@ class LogExtractor(object):
         Parse art runner logs and fills the timestamps and tests variables
         """
         print '==== Parse ART logs ===='
-        art_runner_files = glob.glob(
-            '{0}/{1}*'.format(self.dst, const.LOG_ART_RUNNER)
-        )
+
+        art_runner_files = []
+        for art_logs in (const.LOG_ART_RUNNER_DEBUG, const.LOG_ART_RUNNER):
+            art_runner_files = glob.glob('{0}/{1}*'.format(self.dst, art_logs))
+            if art_runner_files:
+                break
+
+        if not art_runner_files:
+            raise RuntimeError("Failed to find ART runner logs.")
+        
         art_runner_files = natsorted(art_runner_files, reverse=True)
 
         t_file = None
@@ -297,6 +304,7 @@ class LogExtractor(object):
         relevant_team = False
         start_write = False
         stop_parsing = False
+        line = None
 
         for art_runner_file in art_runner_files:
             print 'parse file {0}'.format(art_runner_file)
@@ -336,6 +344,9 @@ class LogExtractor(object):
 
             if stop_parsing:
                 break
+
+        if not last_ts and line:
+            last_ts = self._get_art_log_ts(line)
 
         if t_file and not t_file.closed:
             self._write_art_log(
