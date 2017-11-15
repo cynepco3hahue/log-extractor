@@ -8,6 +8,7 @@ Log extractor for Jenkins jobs
 import datetime
 import glob
 import os
+import re
 import shutil
 import ssl
 import tarfile
@@ -294,7 +295,7 @@ class LogExtractor(object):
 
         if not art_runner_files:
             raise RuntimeError("Failed to find ART runner logs.")
-        
+
         art_runner_files = natsorted(art_runner_files, reverse=True)
 
         t_file = None
@@ -310,7 +311,7 @@ class LogExtractor(object):
             print 'parse file {0}'.format(art_runner_file)
             with open(art_runner_file) as f:
                 for line in f:
-                    if const.FIELD_SETUP in line:
+                    if re.findall(const.PATTERN_SETUP, line):
                         ts = self._get_art_log_ts(line=line)
                         start_write = True
                         if t_file and not t_file.closed:
@@ -339,7 +340,9 @@ class LogExtractor(object):
                                 stop_parsing = True
                                 break
 
-                    if const.FIELD_TEARDOWN in line and relevant_team:
+                    if re.findall(
+                        const.PATTERN_TEARDOWN, line
+                    ) and relevant_team:
                         last_ts = self._get_art_log_ts(line)
 
             if stop_parsing:
