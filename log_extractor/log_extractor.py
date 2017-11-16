@@ -493,7 +493,12 @@ class LogExtractor(object):
         "local compressed file with the logs."
     )
 )
-def run(job, build, folder, logs, team, skip_download, local_log_file):
+@click.option(
+    "--clean/--no-clean",
+    help="Clean all unarchived files after the parsing",
+    default=True
+)
+def run(job, build, folder, logs, team, skip_download, local_log_file, clean):
     """
     Extract and restructure logs from Jenkins jobs.
     """
@@ -575,6 +580,8 @@ def run(job, build, folder, logs, team, skip_download, local_log_file):
     log_extractor.parse_art_logs(team=team)
     log_extractor.parse_logs()
     print "Logs was extracted to {folder}".format(folder=build_folder)
+    if clean:
+        helper.remove_unarchived_files(build_folder)
 
 
 if __name__ == "__main__":

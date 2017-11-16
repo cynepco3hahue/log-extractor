@@ -6,6 +6,7 @@ Helper file for the log extractor
 """
 import ConfigParser
 import os
+import shutil
 import tarfile
 import pycurl
 
@@ -97,3 +98,19 @@ class MutuallyExclusiveOption(Option):
             opts,
             args
         )
+
+
+def remove_unarchived_files(build_folder):
+    """
+    Remove all unarchived files from the build directory after the parsing
+
+    Args:
+        build_folder (str): Build folder
+    """
+    print "Remove unarchived files from the folder {0}".format(build_folder)
+    for root, dirs, files in os.walk(build_folder):
+        for f in files:
+            os.remove(os.path.join(root, f))
+        for d in dirs:
+            if d == "artifact":
+                shutil.rmtree(os.path.join(root, d))
