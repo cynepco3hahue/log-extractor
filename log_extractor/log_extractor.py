@@ -11,7 +11,6 @@ import os
 import re
 import shutil
 import ssl
-import tarfile
 import tempfile
 import user
 from collections import OrderedDict
@@ -35,20 +34,6 @@ class LogExtractor(object):
         self.logs = logs
         self.logs.append(const.LOG_ART_RUNNER)
         self.tss = OrderedDict()
-
-    @staticmethod
-    def _is_archive(path):
-        """
-        Check if the file is archive
-
-        Args:
-            path (str): Path to the file
-
-        Returns:
-            bool: True, if the file is archive, otherwise False
-        """
-        f_ext = os.path.splitext(path)[1]
-        return f_ext in const.ARCHIVE_EXTENSIONS or tarfile.is_tarfile(path)
 
     @staticmethod
     def _is_host_log(path):
@@ -116,7 +101,7 @@ class LogExtractor(object):
                 f_path = os.path.join(root, f)
                 if (
                     not os.path.islink(f_path) and
-                    self._is_archive(f_path) and
+                    helper.is_archive(f_path) and
                     os.path.getsize(f_path) != 0
                 ):
                     dst_path = os.path.splitext(f_path)[0]
@@ -131,8 +116,9 @@ class LogExtractor(object):
                     dst_path = os.path.join(self.dst, os.path.basename(f_path))
                     if self._is_host_log(f_path):
                         dst_path = self._generate_host_log_name(f_path)
-                    if f_path != dst_path and not self._is_archive(f_path):
+                    if f_path != dst_path and not helper.is_archive(f_path):
                         shutil.copy(f_path, dst_path)
+
             if dirs:
                 for dir_name in dirs:
                     self.extract_all(dir_name)
@@ -457,9 +443,15 @@ class LogExtractor(object):
 
 
 @click.command()
-@click.option("--job", help="Job name", required=True)
 @click.option(
-    "--build", help="build number of the job", required=True, type=int
+    "--job", cls=helper.MutuallyExclusiveOption,
+    mutually_exclusive=["skip_download", "local_log_file"],
+    help="Job name"
+)
+@click.option(
+    "--build", cls=helper.MutuallyExclusiveOption,
+    mutually_exclusive=["skip_download", "local_log_file"],
+    help="build number of the job", type=int
 )
 @click.option(
     "--folder",
@@ -482,9 +474,28 @@ class LogExtractor(object):
         "team it will parse log for all teams"
     )
 )
-def run(job, build, folder, logs, team):
+@click.option(
+    "--skip-download", is_flag=True, cls=helper.MutuallyExclusiveOption,
+    mutually_exclusive=["job", "build"],
+    help=(
+        "In case of pre-downloaded logs we can skip download."
+        "Must be used with local-log-file option."
+        "In case logs folder already contains compressed log file, "
+        "it will be used and download will be skipped automatically."
+
+    )
+)
+@click.option(
+    "--local-log-file", cls=helper.MutuallyExclusiveOption,
+    mutually_exclusive=["job", "build"],
+    help=(
+        "In case that skip-download is True we can provide path to "
+        "local compressed file with the logs."
+    )
+)
+def run(job, build, folder, logs, team, skip_download, local_log_file):
     """
-    Extract logs from Jenkins jobs.
+    Extract and restructure logs from Jenkins jobs.
     """
     def get_jenkins_connection():
         """
@@ -496,22 +507,68 @@ def run(job, build, folder, logs, team):
         ssl._create_default_https_context = ssl._create_unverified_context
         return jenkins_api.Jenkins(url=helper.get_jenkins_server())
 
-    jenkins_connection = get_jenkins_connection()
-    build_info = jenkins_connection.get_build_info(name=job, number=build)
-    job_url = build_info.get("url")
+    def check_for_existing_logs_file(path):
+        """
+        Get folder that logs are supposed to be extracted and
+        check for compressed files that might contain the Jenkins logs.
+
+        Returns:
+            bool: True if log file if found else False
+        """
+        found_local_logs = False
+        for root, dirs, files in os.walk(path):
+            if found_local_logs:
+                break
+            for f in files:
+                f_path = os.path.join(root, f)
+                if (
+                    not os.path.islink(f_path) and
+                    helper.is_archive(f_path) and
+                    os.path.getsize(f_path) != 0
+                ):
+                    print(
+                        "Compressed log file found under {folder}."
+                        "Will skip download of logs from Jenkins.".format(
+                            folder=path)
+                    )
+                    found_local_logs = True
+                    break
+        return found_local_logs
 
     if not os.path.exists(path=folder):
         os.mkdir(folder)
 
-    job_folder = os.path.join(folder, job)
-    if not os.path.exists(path=job_folder):
-        os.mkdir(job_folder)
+    found_local_logs = check_for_existing_logs_file(folder)
 
-    build_folder = os.path.join(job_folder, str(build))
-    if not os.path.exists(path=build_folder):
-        os.mkdir(build_folder)
+    if not skip_download and not found_local_logs:
+        jenkins_connection = get_jenkins_connection()
+        build_info = jenkins_connection.get_build_info(name=job, number=build)
+        job_url = build_info.get("url")
 
-    helper.download_artifact(job_url=job_url, dst=build_folder)
+        job_folder = os.path.join(folder, job)
+        if not os.path.exists(path=job_folder):
+            os.mkdir(job_folder)
+
+        build_folder = os.path.join(job_folder, str(build))
+        if not os.path.exists(path=build_folder):
+            os.mkdir(build_folder)
+
+        helper.download_artifact(job_url=job_url, dst=build_folder)
+    else:
+        print "Skipping download artifacts..."
+
+        build_folder = folder
+        if found_local_logs:
+            print "Using existing log file found in {folder}".format(
+                folder=build_folder)
+        else:
+            logs_dir_name = os.path.basename(local_log_file)
+            logs_link_name = os.path.join(build_folder, logs_dir_name)
+            if not os.path.exists(logs_link_name):
+                print "Creating hardlink for {log_dir} to {folder}".format(
+                    folder=logs_link_name, log_dir=local_log_file)
+                os.link(local_log_file, logs_link_name)
+
     logs = logs.split(",") if logs else const.DEFAULT_LOGS
     log_extractor = LogExtractor(dst=build_folder, logs=logs)
     log_extractor.extract_all(path=build_folder)
