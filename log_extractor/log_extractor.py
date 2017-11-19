@@ -447,7 +447,7 @@ class LogExtractor(object):
 @click.option(
     "--job", cls=helper.MutuallyExclusiveOption,
     mutually_exclusive=["skip_download", "local_log_file"],
-    help="Job name"
+    help="Job name",
 )
 @click.option(
     "--build", cls=helper.MutuallyExclusiveOption,
@@ -503,6 +503,11 @@ def run(job, build, folder, logs, team, skip_download, local_log_file, clean):
     """
     Extract and restructure logs from Jenkins jobs.
     """
+    if not(job and build):
+        if not local_log_file:
+            print "Missing arguments (job, build or local-log-file)"
+            return
+
     def get_jenkins_connection():
         """
         Get Jenkins connection object
@@ -521,58 +526,40 @@ def run(job, build, folder, logs, team, skip_download, local_log_file, clean):
         Returns:
             bool: True if log file if found else False
         """
-        found_local_logs = False
         for root, dirs, files in os.walk(path):
-            if found_local_logs:
-                break
-            for f in files:
-                f_path = os.path.join(root, f)
-                if (
-                    not os.path.islink(f_path) and
-                    helper.is_archive(f_path) and
-                    os.path.getsize(f_path) != 0
-                ):
-                    print(
-                        "Compressed log file found under {folder}."
-                        "Will skip download of logs from Jenkins.".format(
-                            folder=path)
-                    )
-                    found_local_logs = True
-                    break
-        return found_local_logs
+            if const.ARTIFACT_ZIP_NAME in files:
+                return True
+        return False
 
-    if not os.path.exists(path=folder):
-        os.mkdir(folder)
+    if not local_log_file:
+        build_folder = os.path.join(folder, job, str(build))
+    else:
+        build_folder = local_log_file
 
-    found_local_logs = check_for_existing_logs_file(folder)
+    if not os.path.exists(path=build_folder):
+        os.makedirs(build_folder)
+
+    found_local_logs = check_for_existing_logs_file(path=build_folder)
 
     if not skip_download and not found_local_logs:
         jenkins_connection = get_jenkins_connection()
         build_info = jenkins_connection.get_build_info(name=job, number=build)
         job_url = build_info.get("url")
-
-        job_folder = os.path.join(folder, job)
-        if not os.path.exists(path=job_folder):
-            os.mkdir(job_folder)
-
-        build_folder = os.path.join(job_folder, str(build))
-        if not os.path.exists(path=build_folder):
-            os.mkdir(build_folder)
-
         helper.download_artifact(job_url=job_url, dst=build_folder)
     else:
         print "Skipping download artifacts..."
 
-        build_folder = folder
         if found_local_logs:
             print "Using existing log file found in {folder}".format(
-                folder=build_folder)
+                folder=build_folder
+            )
         else:
             logs_dir_name = os.path.basename(local_log_file)
             logs_link_name = os.path.join(build_folder, logs_dir_name)
             if not os.path.exists(logs_link_name):
                 print "Creating hardlink for {log_dir} to {folder}".format(
-                    folder=logs_link_name, log_dir=local_log_file)
+                    folder=logs_link_name, log_dir=local_log_file
+                )
                 os.link(local_log_file, logs_link_name)
 
     logs = logs.split(",") if logs else const.DEFAULT_LOGS

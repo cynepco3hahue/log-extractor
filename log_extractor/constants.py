@@ -24,3 +24,4 @@ TS_END = 'end_timestamp'
 HOST_LOGS = ["vdsm.log", "supervdsm.log"]
 DEFAULT_LOGS = HOST_LOGS + [LOG_ENGINE]
 JENKINS_CONF = os.path.join(user.home, ".jenkins.config")
+ARTIFACT_ZIP_NAME = "artifact.zip"
