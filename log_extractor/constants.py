@@ -6,7 +6,6 @@ Constants for log-extractor
 """
 
 import os
-import re
 import user
 
 JOB_ARTIFACT = 'artifact'
@@ -16,8 +15,6 @@ TEAMS = ['compute', 'networking', 'storage', 'system', 'coresystem', 'sla', 'vir
 FIELD_TEST_NAME = 'Test Name'
 FIELDS_SETUP = ('SETUP <', '--TEST START--')
 FIELDS_TEARDOWN = ('TEARDOWN <', '--TEST END--')
-PATTERN_SETUP = re.compile(r'{0}'.format('|'.join(FIELDS_SETUP)))
-PATTERN_TEARDOWN = re.compile(r'{0}'.format('|'.join(FIELDS_TEARDOWN)))
 LOG_ART_RUNNER_DEBUG = 'art_test_runner.log.debug'
 LOG_ART_RUNNER = 'art_test_runner.log'
 LOG_ENGINE = 'engine.log'

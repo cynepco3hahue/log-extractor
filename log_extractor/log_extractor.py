@@ -8,7 +8,6 @@ Log extractor for Jenkins jobs
 import datetime
 import glob
 import os
-import re
 import shutil
 import ssl
 import tempfile
@@ -297,7 +296,8 @@ class LogExtractor(object):
             print 'parse file {0}'.format(art_runner_file)
             with open(art_runner_file) as f:
                 for line in f:
-                    if re.findall(const.PATTERN_SETUP, line):
+                    setup_line = any(s in line for s in const.FIELDS_SETUP)
+                    if setup_line:
                         ts = self._get_art_log_ts(line=line)
                         start_write = True
                         if t_file and not t_file.closed:
@@ -326,9 +326,10 @@ class LogExtractor(object):
                                 stop_parsing = True
                                 break
 
-                    if re.findall(
-                        const.PATTERN_TEARDOWN, line
-                    ) and relevant_team:
+                    teardown_line = any(
+                        t in line for t in const.FIELDS_TEARDOWN
+                    )
+                    if teardown_line and relevant_team:
                         last_ts = self._get_art_log_ts(line)
 
             if stop_parsing:
