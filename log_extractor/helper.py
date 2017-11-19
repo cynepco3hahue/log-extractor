@@ -108,9 +108,9 @@ def remove_unarchived_files(build_folder):
         build_folder (str): Build folder
     """
     print "Remove unarchived files from the folder {0}".format(build_folder)
-    for root, dirs, files in os.walk(build_folder):
-        for f in files:
-            os.remove(os.path.join(root, f))
-        for d in dirs:
-            if d == "artifact":
-                shutil.rmtree(os.path.join(root, d))
+    for f in os.listdir(build_folder):
+        f_path = os.path.join(build_folder, f)
+        if os.path.isfile(f_path):
+            os.remove(f_path)
+        elif f == "artifact":
+            shutil.rmtree(f_path)
