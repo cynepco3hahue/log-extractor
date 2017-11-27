@@ -13,6 +13,8 @@ import ssl
 import tempfile
 import user
 from collections import OrderedDict
+import logging
+import sys
 
 import click
 import jenkins as jenkins_api
@@ -21,6 +23,8 @@ from natsort import natsorted
 
 import constants as const
 import helper
+
+logger = logging.getLogger(__file__)
 
 
 class LogExtractor(object):
@@ -104,7 +108,7 @@ class LogExtractor(object):
                     os.path.getsize(f_path) != 0
                 ):
                     dst_path = os.path.splitext(f_path)[0]
-                    print '==== Unpack the file %s ====' % f_path
+                    logger.info('==== Unpack the file {0} ===='.format(f_path))
                     pyunpack.Archive(f_path).extractall(
                         dst_path, auto_create_dir=True
                     )
@@ -270,7 +274,7 @@ class LogExtractor(object):
         """
         Parse art runner logs and fills the timestamps and tests variables
         """
-        print '==== Parse ART logs ===='
+        logger.info('==== Parse ART logs ====')
 
         art_runner_files = []
         for art_logs in (const.LOG_ART_RUNNER_DEBUG, const.LOG_ART_RUNNER):
@@ -293,7 +297,7 @@ class LogExtractor(object):
         line = None
 
         for art_runner_file in art_runner_files:
-            print 'parse file {0}'.format(art_runner_file)
+            logger.info('parse file {0}'.format(art_runner_file))
             with open(art_runner_file) as f:
                 for line in f:
                     setup_line = any(s in line for s in const.FIELDS_SETUP)
@@ -365,7 +369,7 @@ class LogExtractor(object):
             if log_name == const.LOG_ART_RUNNER:
                 continue
 
-            print '==== Parse {0}\'s ===='.format(log_name)
+            logger.info('==== Parse {0}\'s ===='.format(log_name))
 
             search_pattern = '{0}/{1}*'
             if self._is_host_log(path=log_name):
@@ -382,7 +386,7 @@ class LogExtractor(object):
             log_prefix = ''
             temp_log_prefix = ''
             for log_file in log_files:
-                print 'parse file {0}'.format(log_file)
+                logger.info('parse file {0}'.format(log_file))
                 new_file_name = log_name
                 if self._is_host_log(path=log_name):
                     log_prefix = self._get_host_log_prefix(file_name=log_file)
@@ -499,14 +503,18 @@ class LogExtractor(object):
     help="Clean all unarchived files after the parsing",
     default=True
 )
-def run(job, build, folder, logs, team, skip_download, local_log_file, clean):
+@click.option(
+    "--log-output", help="Redirect output to a file."
+)
+@click.option(
+    '-v', '--verbose', count=True,
+    help="Increases log verbosity for each occurence.", default=0
+)
+def run(job, build, folder, logs, team, skip_download, clean,
+        local_log_file, log_output, verbose):
     """
     Extract and restructure logs from Jenkins jobs.
     """
-    if not(job and build):
-        if not local_log_file:
-            print "Missing arguments (job, build or local-log-file)"
-            return
 
     def get_jenkins_connection():
         """
@@ -531,10 +539,24 @@ def run(job, build, folder, logs, team, skip_download, local_log_file, clean):
                 return True
         return False
 
-    if not local_log_file:
+    if not local_log_file and not skip_download:
         build_folder = os.path.join(folder, job, str(build))
     else:
-        build_folder = local_log_file
+        build_folder = folder
+
+    log_levels = [logging.WARNING, logging.INFO, logging.DEBUG]
+    log_level = log_levels[min(len(log_levels)-1, verbose)]
+
+    logging.basicConfig(
+        filename=log_output,
+        stream=None,
+        level=log_level
+    )
+
+    if not(job and build):
+        if not local_log_file:
+            logger.info("Missing arguments (job, build or local-log-file)")
+            return
 
     if not os.path.exists(path=build_folder):
         os.makedirs(build_folder)
@@ -547,18 +569,20 @@ def run(job, build, folder, logs, team, skip_download, local_log_file, clean):
         job_url = build_info.get("url")
         helper.download_artifact(job_url=job_url, dst=build_folder)
     else:
-        print "Skipping download artifacts..."
+        logger.info("Skipping download artifacts...")
 
         if found_local_logs:
-            print "Using existing log file found in {folder}".format(
-                folder=build_folder
+            logger.info(
+                "Using existing log file found in {folder}".format(
+                    folder=build_folder)
             )
         else:
             logs_dir_name = os.path.basename(local_log_file)
             logs_link_name = os.path.join(build_folder, logs_dir_name)
             if not os.path.exists(logs_link_name):
-                print "Creating hardlink for {log_dir} to {folder}".format(
-                    folder=logs_link_name, log_dir=local_log_file
+                logger.info(
+                    "Creating hardlink for {log_dir} to {folder}".format(
+                        folder=logs_link_name, log_dir=local_log_file)
                 )
                 os.link(local_log_file, logs_link_name)
 
@@ -567,7 +591,7 @@ def run(job, build, folder, logs, team, skip_download, local_log_file, clean):
     log_extractor.extract_all(path=build_folder)
     log_extractor.parse_art_logs(team=team)
     log_extractor.parse_logs()
-    print "Logs was extracted to {folder}".format(folder=build_folder)
+    logger.info("Logs was extracted to {folder}".format(folder=build_folder))
     if clean:
         helper.remove_unarchived_files(build_folder)
 

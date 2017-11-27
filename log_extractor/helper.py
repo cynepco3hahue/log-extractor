@@ -8,10 +8,13 @@ import ConfigParser
 import os
 import shutil
 import tarfile
+import logging
 import pycurl
 
 import constants as const
 from click import Option, UsageError
+
+logger = logging.getLogger(__file__)
 
 
 def download_artifact(job_url, dst):
@@ -35,7 +38,7 @@ def download_artifact(job_url, dst):
         conn.setopt(conn.SSL_VERIFYPEER, False)
         conn.setopt(conn.URL, str("%s/%s" % (job_url, const.JOB_ARTIFACT_ZIP)))
         conn.setopt(conn.WRITEDATA, f)
-        print "Download artifacts from the link {0}".format(job_url)
+        logger.info("Download artifacts from the link %s", job_url)
         conn.perform()
         conn.close()
 
