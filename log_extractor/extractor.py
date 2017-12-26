@@ -6,23 +6,26 @@ Log extractor for Jenkins jobs
 """
 
 import datetime
-import glob
 import os
-import shutil
-import ssl
 import tempfile
 import user
 from collections import OrderedDict
+
+import shutil
+import urlparse
+from contextlib import closing
 import logging
-import sys
-
-import click
-import jenkins as jenkins_api
-import pyunpack
 from natsort import natsorted
+import click
 
-import constants as const
-import helper
+from log_extractor import constants as const
+from log_extractor import helper
+from log_extractor.files import (
+    TarFile,
+    ZipFile,
+    DirNode,
+)
+
 
 logger = logging.getLogger(__file__)
 
@@ -68,63 +71,6 @@ class LogExtractor(object):
             if '/{0}'.format(pattern) in path:
                 return True
         return False
-
-    def _generate_host_log_name(self, path):
-        """
-        Generate host log name, hostname_logname.log
-
-        Args:
-            path (str): Path to the host file
-
-        Returns:
-            str: New host log name
-        """
-        f_basename = os.path.basename(path)
-        next_dir = False
-        prefix = ''
-        for dir_name in path.split('/'):
-            if next_dir and dir_name not in ['logs', 'hosts-logs']:
-                prefix = dir_name
-                break
-            if dir_name in ['logs', 'hosts-logs']:
-                next_dir = True
-        f_new_basename = "{0}_{1}".format(prefix, f_basename)
-        return os.path.join(self.dst, f_new_basename)
-
-    def extract_all(self, path):
-        """
-        Extract recursively all archives under the path directory and
-        copy all relevant files to the path directory
-
-        Args:
-            path (str): Path to the directory
-        """
-        for root, dirs, files in os.walk(path):
-            for f in files:
-                f_path = os.path.join(root, f)
-                if (
-                    not os.path.islink(f_path) and
-                    helper.is_archive(f_path) and
-                    os.path.getsize(f_path) != 0
-                ):
-                    dst_path = os.path.splitext(f_path)[0]
-                    logger.info('==== Unpack the file {0} ===='.format(f_path))
-                    pyunpack.Archive(f_path).extractall(
-                        dst_path, auto_create_dir=True
-                    )
-                    f_path = dst_path
-                    if os.path.isdir(f_path):
-                        self.extract_all(f_path)
-                if os.path.isfile(f_path) and self._is_relevant_file(f_path):
-                    dst_path = os.path.join(self.dst, os.path.basename(f_path))
-                    if self._is_host_log(f_path):
-                        dst_path = self._generate_host_log_name(f_path)
-                    if f_path != dst_path and not helper.is_archive(f_path):
-                        shutil.copy(f_path, dst_path)
-
-            if dirs:
-                for dir_name in dirs:
-                    self.extract_all(dir_name)
 
     @classmethod
     def _get_art_log_ts(cls, line):
@@ -191,7 +137,7 @@ class LogExtractor(object):
         Returns:
             str: Host log prefix
         """
-        return os.path.basename(file_name).split('_')[0]
+        return os.path.basename(file_name).split('.')[0]
 
     def _define_tss(self, test_name):
         """
@@ -270,15 +216,58 @@ class LogExtractor(object):
             os.makedirs(test_dir_name)
         return test_dir_name
 
-    def parse_art_logs(self, team=None):
+    def unpack_relevant_remote_logs(self, dst, source_object):
+        """"
+        Unpacks tar.gz files containing remote logs in case they are
+        inside archive.
+
+        Args:
+            dst (str): Destination path to store the extracted files
+            source_object (str): Object containing log directory information
+
+        Returns:
+
+        """
+        remote_dirs_all = source_object.list_files(const.REMOTE_LOGS_DIR)
+        host_files = [
+            x for x in remote_dirs_all
+            if const.HOST_LOGS_SPEC in x.split('/')[-2]
+        ]
+        engine_files = [
+            x for x in remote_dirs_all
+            if const.ENGINE_LOG_SPEC in x.split('/')[-2]
+        ]
+        for log_name in self.logs:
+            if log_name == const.LOG_ART_RUNNER:
+                continue
+
+            if self._is_host_log(path=log_name):
+                dst_dir = 'host-logs'
+                remote_files = host_files
+            elif log_name == const.ENGINE_LOG:
+                dst_dir = 'engine-logs'
+                remote_files = engine_files
+            dst_dir = os.path.join(dst, dst_dir)
+            for f in remote_files:
+                logger.info("Copying file {0} to {1}".format(f, dst_dir))
+                source_object.extract(f, dst_dir)
+                extension = ".".join(f.split(".")[-2:])
+                os.rename(
+                    os.path.join(dst_dir, os.path.basename(f)),
+                    os.path.join(dst_dir, "{name}.{extension}".format(
+                        name=f.split('/')[-2], extension=extension))
+                )
+
+    def parse_art_logs(self, team=None, source_object=None):
         """
         Parse art runner logs and fills the timestamps and tests variables
         """
         logger.info('==== Parse ART logs ====')
-
+        art_runner_files_all = source_object.list_files(const.LOG_ART_DIR)
         art_runner_files = []
         for art_logs in (const.LOG_ART_RUNNER_DEBUG, const.LOG_ART_RUNNER):
-            art_runner_files = glob.glob('{0}/{1}*'.format(self.dst, art_logs))
+            art_runner_files = [
+                f for f in art_runner_files_all if art_logs in f]
             if art_runner_files:
                 break
 
@@ -298,7 +287,7 @@ class LogExtractor(object):
 
         for art_runner_file in art_runner_files:
             logger.info('parse file {0}'.format(art_runner_file))
-            with open(art_runner_file) as f:
+            with source_object.open(art_runner_file) as f:
                 for line in f:
                     setup_line = any(s in line for s in const.FIELDS_SETUP)
                     if setup_line:
@@ -371,25 +360,40 @@ class LogExtractor(object):
 
             logger.info('==== Parse {0}\'s ===='.format(log_name))
 
-            search_pattern = '{0}/{1}*'
+            log_files = []
             if self._is_host_log(path=log_name):
-                search_pattern = '{0}/*_{1}*'
-            log_files = glob.glob(search_pattern.format(self.dst, log_name))
+                search_dir = 'host-logs'
+            else:
+                search_dir = 'engine-logs'
+            search_dir = os.path.join(self.dst, const.TEMPDIR_NAME, search_dir)
+
+            for (dirpath, _, filenames) in os.walk(search_dir):
+                for tarfile in filenames:
+                    tar_object = TarFile(os.path.join(dirpath, tarfile))
+                    log_files += [
+                        (tarfile, x, tar_object)
+                        for x in tar_object.list_files()
+                        if os.path.basename(x).startswith(log_name)
+                    ]
+                break
+
             if not log_files:
                 continue
 
             log_files = natsorted(log_files, reverse=True)
-            if log_name == const.LOG_ENGINE:
+            if log_name == const.ENGINE_LOG:
                 log_files = natsorted(log_files)
                 log_files.insert(len(log_files) - 1, log_files.pop(0))
 
             log_prefix = ''
             temp_log_prefix = ''
-            for log_file in log_files:
-                logger.info('parse file {0}'.format(log_file))
+            for tarfile, log_file, tar_object in log_files:
+                logger.info(
+                    'parse file {0} from {1}'.format(log_file, tarfile)
+                )
                 new_file_name = log_name
                 if self._is_host_log(path=log_name):
-                    log_prefix = self._get_host_log_prefix(file_name=log_file)
+                    log_prefix = self._get_host_log_prefix(file_name=tarfile)
                     new_file_name = '{0}_{1}'.format(log_prefix, new_file_name)
                 if (
                     (temp_log_name != log_name) or
@@ -414,7 +418,7 @@ class LogExtractor(object):
                 if stop_parsing:
                     continue
 
-                with open(log_file) as f:
+                with closing(tar_object.open(log_file)) as f:
                     for line in f:
                         ts = self._get_log_ts(line)
                         if (
@@ -449,18 +453,21 @@ class LogExtractor(object):
 
 @click.command()
 @click.option(
-    "--job", cls=helper.MutuallyExclusiveOption,
-    mutually_exclusive=["skip_download", "local_log_file"],
-    help="Job name",
-)
-@click.option(
-    "--build", cls=helper.MutuallyExclusiveOption,
-    mutually_exclusive=["skip_download", "local_log_file"],
-    help="build number of the job", type=int
+    "--source",
+    help=(
+        "Source for the logs to refactor. Can be Jenkins build url,"
+        "locally downloaded file from Jenkins jobs artifacts (archive.zip), "
+        "or path to directory containing the logs, exactly in the format "
+        "they are in Jenkins Job $WORKSPACE."
+    ),
+    required=True
 )
 @click.option(
     "--folder",
-    help="Folder path to save the logs",
+    help=(
+        "Folder path to save the logs. In case source is url,"
+        "the job name and build number will be appended to folder name."
+    ),
     default=os.path.join(user.home, "art-tests-logs")
 )
 @click.option(
@@ -480,120 +487,58 @@ class LogExtractor(object):
     )
 )
 @click.option(
-    "--skip-download", is_flag=True, cls=helper.MutuallyExclusiveOption,
-    mutually_exclusive=["job", "build"],
-    help=(
-        "In case of pre-downloaded logs we can skip download."
-        "Must be used with local-log-file option."
-        "In case logs folder already contains compressed log file, "
-        "it will be used and download will be skipped automatically."
-
-    )
-)
-@click.option(
-    "--local-log-file", cls=helper.MutuallyExclusiveOption,
-    mutually_exclusive=["job", "build"],
-    help=(
-        "In case that skip-download is True we can provide path to "
-        "local compressed file with the logs."
-    )
-)
-@click.option(
-    "--clean/--no-clean",
-    help="Clean all unarchived files after the parsing",
-    default=True
-)
-@click.option(
     "--log-output", help="Redirect output to a file."
 )
 @click.option(
     '-v', '--verbose', count=True,
     help="Increases log verbosity for each occurence.", default=0
 )
-def run(job, build, folder, logs, team, skip_download, clean,
-        local_log_file, log_output, verbose):
+def run(source, folder, logs, team, log_output, verbose):
     """
-    Extract and restructure logs from Jenkins jobs.
+    Restructure logs from Jenkins jobs.
     """
+    helper.configure_logging(log_output=log_output, verbose=verbose)
 
-    def get_jenkins_connection():
-        """
-        Get Jenkins connection object
+    if not os.path.exists(path=folder):
+        os.makedirs(folder)
 
-        Returns:
-            Jenkins: Jenkins connection
-        """
-        ssl._create_default_https_context = ssl._create_unverified_context
-        return jenkins_api.Jenkins(url=helper.get_jenkins_server())
+    source_type = helper.identify_source_type(source)
+    source_path = source
 
-    def check_for_existing_logs_file(path):
-        """
-        Get folder that logs are supposed to be extracted and
-        check for compressed files that might contain the Jenkins logs.
+    if source_type == "url":
+        parsed_url = urlparse.urlparse(source)
+        jenkins_path_list = parsed_url.path.split("/")
+        job_name = jenkins_path_list[2]
+        build_number = jenkins_path_list[3]
+        folder = os.path.join(folder, job_name, build_number)
+        source_path = os.path.join(
+            folder, const.TEMPDIR_NAME,
+            '{filename}.zip'.format(filename=const.JOB_ARTIFACT)
+        )
+        helper.download_artifact(job_url=source, dst=os.path.join(source_path))
+        source_type = "zip"
 
-        Returns:
-            bool: True if log file if found else False
-        """
-        for root, dirs, files in os.walk(path):
-            if const.ARTIFACT_ZIP_NAME in files:
-                return True
-        return False
-
-    if not local_log_file and not skip_download:
-        build_folder = os.path.join(folder, job, str(build))
+    if source_type == "dir":
+        source_object = DirNode(source_path)
+    elif source_type == "zip":
+        source_object = ZipFile(source_path)
     else:
-        build_folder = folder
+        err = "The source logs files are of unhandled type."
+        raise Exception(err)
 
-    log_levels = [logging.WARNING, logging.INFO, logging.DEBUG]
-    log_level = log_levels[min(len(log_levels)-1, verbose)]
-
-    logging.basicConfig(
-        filename=log_output,
-        stream=None,
-        level=log_level
-    )
-
-    if not(job and build):
-        if not local_log_file:
-            logger.info("Missing arguments (job, build or local-log-file)")
-            return
-
-    if not os.path.exists(path=build_folder):
-        os.makedirs(build_folder)
-
-    found_local_logs = check_for_existing_logs_file(path=build_folder)
-
-    if not skip_download and not found_local_logs:
-        jenkins_connection = get_jenkins_connection()
-        build_info = jenkins_connection.get_build_info(name=job, number=build)
-        job_url = build_info.get("url")
-        helper.download_artifact(job_url=job_url, dst=build_folder)
-    else:
-        logger.info("Skipping download artifacts...")
-
-        if found_local_logs:
-            logger.info(
-                "Using existing log file found in {folder}".format(
-                    folder=build_folder)
-            )
-        else:
-            logs_dir_name = os.path.basename(local_log_file)
-            logs_link_name = os.path.join(build_folder, logs_dir_name)
-            if not os.path.exists(logs_link_name):
-                logger.info(
-                    "Creating hardlink for {log_dir} to {folder}".format(
-                        folder=logs_link_name, log_dir=local_log_file)
-                )
-                os.link(local_log_file, logs_link_name)
-
+    build_folder = os.path.join(folder, const.TEMPDIR_NAME)
     logs = logs.split(",") if logs else const.DEFAULT_LOGS
-    log_extractor = LogExtractor(dst=build_folder, logs=logs)
-    log_extractor.extract_all(path=build_folder)
-    log_extractor.parse_art_logs(team=team)
+
+    log_extractor = LogExtractor(dst=folder, logs=logs)
+    log_extractor.parse_art_logs(team=team, source_object=source_object)
+    log_extractor.unpack_relevant_remote_logs(
+        dst=build_folder, source_object=source_object
+    )
     log_extractor.parse_logs()
-    logger.info("Logs was extracted to {folder}".format(folder=build_folder))
-    if clean:
-        helper.remove_unarchived_files(build_folder)
+    if os.path.isdir(build_folder):
+        shutil.rmtree(build_folder)
+
+    logger.info("Logs was extracted to {folder}".format(folder=folder))
 
 
 if __name__ == "__main__":

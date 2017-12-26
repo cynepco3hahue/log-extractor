@@ -1,0 +1,9 @@
+Click
+natsort
+# https://github.com/pycontribs/jenkinsapi/issues/546
+jenkinsapi == 0.3.3
+python-jenkins
+patool
+pycurl
+pylzma
+pyliblzma

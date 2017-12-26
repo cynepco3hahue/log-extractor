@@ -1,17 +1,35 @@
 # log-extractor
-ART log extractor, download a job artifacts, unpack all archives and parse relevant logs.
+When running lots of tests, it is easy for logs to get huge and trying to
+search through them to find the data that is relevant to the portion of time
+a specific test was running for is tedious, even with time stamping.
+log-extractor rei-structures the logs, creating per testcase log files.
 
 # Install
 `sudo pip install . -U`
 
-Jenkins config file `~/.jenkins.config` should be under user home directory and must include
-
-```
-[SETTING]
-server=https://jenkins.example.com
-```
-
 # Usage:
-`log-extractor --job rhv-master-ge-runner-network --build 275 --team networking --logs engine.log,vdsm.log`
+Source can be either:
 
+Jenkins build URL:
+```bash
+$ log-extractor \
+    --source https://jenkins.example.com/job/rhv-master-ge-runner-network/275 \
+    --team networking \
+    --logs engine.log,vdsm.log
+```
 
+Locally downladed logs in zip format from Jenkins job artifacts:
+```bash
+$ log_extractor \
+    --source /home/kkoukiou/Downloads/archive.zip \
+    --team networking \
+    --logs engine.log,vdsm.log
+```
+
+Local folder containing the logs:
+```bash
+$ log_extractor \
+    --source /home/kkoukiou/Downloads/archive \
+    --team networking \
+    --logs engine.log,vdsm.log
+```

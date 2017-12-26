@@ -1,30 +1,10 @@
-#! /usr/bin/python
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python
 
-from setuptools import setup, find_packages
+from setuptools import setup
 
-SCRIPT_NAME = "log-extractor"
-SCRIPT = (
-    "_JLOG_EXTRACTOR_COMPLETE=source {script_name} > "
-    "auto-completion.sh".format(script_name=SCRIPT_NAME)
-)
 
-setup(
-    name='log_extractor',
-    version='1.0',
-    packages=find_packages(),
-    include_package_data=True,
-    install_requires=[
-        'Click',
-        'pyunpack',
-        'natsort',
-        'jenkinsapi',
-        'python-jenkins',
-        'patool',
-        'pycurl'
-    ],
-    entry_points='''
-        [console_scripts]
-        {script_name}=log_extractor.log_extractor:run
-    '''.format(script_name=SCRIPT_NAME),
-)
+if __name__ == "__main__":
+    setup(
+        setup_requires=['pbr'],
+        pbr=True,
+    )

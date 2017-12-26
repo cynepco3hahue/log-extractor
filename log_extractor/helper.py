@@ -4,15 +4,12 @@
 """
 Helper file for the log extractor
 """
-import ConfigParser
 import os
-import shutil
-import tarfile
 import logging
 import pycurl
+from urllib2 import urlopen
 
 import constants as const
-from click import Option, UsageError
 
 logger = logging.getLogger(__file__)
 
@@ -43,77 +40,37 @@ def download_artifact(job_url, dst):
         conn.close()
 
 
-def get_jenkins_server():
+def identify_source_type(source):
     """
-    Get jenkins server from config file
-    """
-    config = ConfigParser.RawConfigParser()
-    config.read(const.JENKINS_CONF)
-    return config.get("SETTING", "server")
-
-
-def is_archive(path):
-    """
-    Check if the file is archive
-
-    Args:
-        path (str): Path to the file
+    Identifies source type, can be URL, ZIP file or directory.
 
     Returns:
-        bool: True, if the file is archive, otherwise False
+        string: "url", "zip", "dir"
     """
-    f_ext = os.path.splitext(path)[1]
-    return f_ext in const.ARCHIVE_EXTENSIONS or tarfile.is_tarfile(path)
+    try:
+        f = urlopen(source)
+        f.close()
+        return "url"
+    except ValueError:
+        if os.path.basename(source) == const.ARTIFACT_ZIP_NAME:
+            return "zip"
+        elif os.path.isdir(source):
+            return "dir"
 
 
-class MutuallyExclusiveOption(Option):
-    def __init__(self, *args, **kwargs):
-        """
-        Adding support for mutually exclusive parameters in click.Option
-        """
-        self.mutually_exclusive = set(kwargs.pop('mutually_exclusive', []))
-        help = kwargs.get('help', '')
-        if self.mutually_exclusive:
-            ex_str = ', '.join(self.mutually_exclusive)
-            kwargs['help'] = help + (
-                ' NOTE: This argument is mutually exclusive with '
-                ' arguments: [' + ex_str + '].'
-            )
-        super(MutuallyExclusiveOption, self).__init__(*args, **kwargs)
-
-    def handle_parse_result(self, ctx, opts, args):
-        """
-        We are overriding here the click.Option.handle_parse_result() method
-        to raise Error in cause mutually exclusive parameters are used
-        together.
-        """
-        if self.mutually_exclusive.intersection(opts) and self.name in opts:
-            raise UsageError(
-                "Illegal usage: `{}` is mutually exclusive with "
-                "arguments `{}`.".format(
-                    self.name,
-                    ', '.join(self.mutually_exclusive)
-                )
-            )
-
-        return super(MutuallyExclusiveOption, self).handle_parse_result(
-            ctx,
-            opts,
-            args
-        )
-
-
-def remove_unarchived_files(build_folder):
+def configure_logging(log_output, verbose):
     """
-    Remove all unarchived files from the build directory after the parsing
+    Configures python logging.
 
     Args:
-        build_folder (str): Build folder
+        log_output (str): Filename to redirect output to.
+                          If None stdout will be used.
     """
-    print "Remove unarchived files from the folder {0}".format(build_folder)
-    for f in os.listdir(build_folder):
-        f_path = os.path.join(build_folder, f)
-        if os.path.isfile(f_path):
-            os.remove(f_path)
-        elif f == "artifact":
-            shutil.rmtree(f_path)
+    log_levels = [logging.WARNING, logging.INFO, logging.DEBUG]
+    log_level = log_levels[min(len(log_levels)-1, verbose)]
+
+    logging.basicConfig(
+        filename=log_output,
+        stream=None,
+        level=log_level
+    )
