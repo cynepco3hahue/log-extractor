@@ -1,7 +1,8 @@
-import os
-import zipfile
-import tarfile
+import gzip
 import lzma
+import os
+import tarfile
+import zipfile
 
 
 class TarFile(object):
@@ -33,8 +34,22 @@ class TarFile(object):
         Returns:
             file-like object for 'filepath'
         """
-        if filepath.endswith(".xz"):
-            return LZMAFile(self.tf.extractfile(filepath))
+        if filepath.endswith(".xz") or filepath.endswith("gz"):
+            dir_base = os.path.dirname(self.path)
+            dir_name = os.path.basename(self.path).split(".")[0]
+            dir_path = os.path.join(dir_base, dir_name)
+            extracted_filepath = os.path.join(dir_path, filepath)
+            if not os.path.exists(dir_path):
+                os.mkdir(dir_path)
+            self.tf.extract(filepath, dir_path)
+            if filepath.endswith(".xz"):
+                return lzma.LZMAFile(extracted_filepath)
+
+            if filepath.endswith(".gz"):
+                return gzip.open(
+                    extracted_filepath, "r:gz"
+                )
+
         return self.tf.extractfile(filepath)
 
     def extract(self, filepath, dst):
@@ -95,61 +110,6 @@ class ZipFile(object):
             os.path.join(dst, os.path.basename(filepath))
         )
         os.removedirs(os.path.dirname(os.path.join(dst, filepath)))
-
-
-class LZMAFile(object):
-    """
-    Class to abstract operations on .bz files
-    """
-
-    def __init__(self, file_obj, buff_size=4096):
-        self.f = file_obj
-        self.d = lzma.LZMADecompressor()
-        self.buff = ""
-        self.buff_size = buff_size
-
-    def __enter__(self):
-        return self
-
-    def __iter__(self):
-        return self
-
-    def __exit__(self, type_, value, tb):
-        self.close()
-
-    def __next__(self):
-        """
-        Manually iterate through all the items of an LZMAFile iterator.
-        Will allow us to read LZMA files line by line in for loop like,
-        for line in lzma_file:
-        """
-        if self.buff:
-            maybe_line = self.buff.split("\n", 1)
-            if len(maybe_line) > 1:
-                line, self.buff = maybe_line
-                return line
-        buff = ""
-        while True:
-            if not buff:
-                buff = self.f.read(self.buff_size)
-                if not buff:
-                    if self.buff:
-                        buff = self.buff
-                        self.buff = ""
-                        return buff
-                    raise StopIteration()
-                self.buff += self.d.decompress(buff)
-
-            maybe_line = self.buff.split("\n", 1)
-            if len(maybe_line) == 1:
-                buff = ""
-                continue
-            line, self.buff = maybe_line
-            return line
-    next = __next__
-
-    def close(self):
-        self.f.close()
 
 
 class DirNode(object):

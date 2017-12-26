@@ -4,10 +4,11 @@
 """
 Helper file for the log extractor
 """
-import os
 import logging
-import pycurl
+import os
 from urllib2 import urlopen
+
+import pycurl
 
 import constants as const
 

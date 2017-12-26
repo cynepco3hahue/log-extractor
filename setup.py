@@ -6,5 +6,5 @@ from setuptools import setup
 if __name__ == "__main__":
     setup(
         setup_requires=['pbr'],
-        pbr=True,
+        pbr=True, install_requires=['natsort', 'click']
     )
