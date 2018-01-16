@@ -19,9 +19,9 @@ from contextlib import closing
 import click
 from natsort import natsorted
 
-from log_extractor import constants as const
-from log_extractor import helper
-from log_extractor.files import (
+import constants as const
+import helper
+from files import (
     TarFile,
     ZipFile,
     DirNode,
@@ -246,13 +246,18 @@ class LogExtractor(object):
                 remote_files = engine_files
             dst_dir = os.path.join(dst, dst_dir)
             for f in remote_files:
+                extension = ".".join(f.split(".")[-2:])
+                new_filename = os.path.join(
+                    dst_dir, "{name}.{extension}".format(
+                        name=f.split("/")[-2], extension=extension
+                    )
+                )
+                if os.path.exists(path=new_filename):
+                    continue
                 logger.info("Copying file {0} to {1}".format(f, dst_dir))
                 source_object.extract(f, dst_dir)
-                extension = ".".join(f.split(".")[-2:])
                 os.rename(
-                    os.path.join(dst_dir, os.path.basename(f)),
-                    os.path.join(dst_dir, "{name}.{extension}".format(
-                        name=f.split("/")[-2], extension=extension))
+                    os.path.join(dst_dir, os.path.basename(f)), new_filename
                 )
 
     def parse_art_logs(self, team=None, source_object=None):

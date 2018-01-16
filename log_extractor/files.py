@@ -82,7 +82,10 @@ class ZipFile(object):
         Returns:
             list: Names of members of ZipFile object within `directory`
         """
-        return [x for x in self.zf.namelist() if directory in x]
+        return [
+            x for x in self.zf.namelist()
+            if directory in x and "logs_per_test" not in x
+        ]
 
     def open(self, filepath):
         """
