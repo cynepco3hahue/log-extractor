@@ -152,12 +152,23 @@ class LogExtractor(object):
         test_start_ts = (
             self.tss[test_name][const.TS_START] - datetime.timedelta(minutes=1)
         )
-        test_end_ts = (
-            self.tss[test_name][const.TS_END] + datetime.timedelta(minutes=1)
-        )
-        next_test_start_ts = (
-            self.tss[test_name][const.TS_END] - datetime.timedelta(minutes=1)
-        )
+        # in case there is a line with no timestamps, we use the start time
+        if not self.tss[test_name].get(const.TS_END):
+            test_end_ts = self.tss[test_name][const.TS_END] = test_start_ts
+            next_test_start_ts = test_start_ts
+            self.tss[test_name][const.TS_END] = test_start_ts
+        else:
+            test_end_ts = (
+                self.tss[test_name][const.TS_END] + datetime.timedelta(
+                    minutes=1
+                )
+            )
+            next_test_start_ts = (
+                self.tss[test_name][const.TS_END] - datetime.timedelta(
+                    minutes=1
+                )
+            )
+
         return test_start_ts, test_end_ts, next_test_start_ts
 
     def _write_art_log(self, t_file, test_dir_name, ts):
@@ -295,12 +306,13 @@ class LogExtractor(object):
                     if setup_line:
                         ts = self._get_art_log_ts(line=line)
                         start_write = True
-                        if t_file and not t_file.closed:
-                            self._write_art_log(
-                                t_file=t_file,
-                                test_dir_name=test_dir_name,
-                                ts=ts
-                            )
+                        if test_dir_name:
+                            if t_file and not t_file.closed:
+                                self._write_art_log(
+                                    t_file=t_file,
+                                    test_dir_name=test_dir_name,
+                                    ts=ts
+                                )
                         t_file = tempfile.TemporaryFile(mode="w+")
 
                     if t_file and not t_file.closed and start_write:
@@ -451,6 +463,7 @@ class LogExtractor(object):
                             start_write = False
                             f.seek(next_test_f_pos)
                             write_next_test_f_pos = True
+
                             start_ts, end_ts, next_start_ts = self._define_tss(
                                 test_name=cur_test_name
                             )
