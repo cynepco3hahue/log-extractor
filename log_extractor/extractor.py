@@ -303,6 +303,9 @@ class LogExtractor(object):
             with source_object.open(art_runner_file) as f:
                 for line in f:
                     setup_line = any(s in line for s in const.FIELDS_SETUP)
+                    ignore_line = any(s in line for s in const.LINES_TO_IGNORE)
+                    if ignore_line:
+                        continue
                     if setup_line:
                         ts = self._get_art_log_ts(line=line)
                         start_write = True
