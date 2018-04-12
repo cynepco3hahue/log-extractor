@@ -40,3 +40,5 @@ HOST_LOGS_SPEC = "hypervisor"
 DEFAULT_LOGS = HOST_LOGS + [ENGINE_LOG]
 
 TEMPDIR_NAME = "tempdir"
+
+LINES_TO_IGNORE = ('reportportal_client',)
