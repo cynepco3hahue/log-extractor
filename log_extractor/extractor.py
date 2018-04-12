@@ -545,7 +545,6 @@ def run(source, folder, logs, team, log_output, verbose):
         source = source_path
 
     if source_type == "dir":
-        folder = source
         source_object = DirNode(source_path)
     elif source_type == "zip":
         folder = os.path.dirname(source)
