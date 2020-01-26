@@ -11,7 +11,10 @@ import lzma
 import os
 import shutil
 import tempfile
-import urlparse
+try:
+    import urlparse  # py27
+except ModuleNotFoundError:
+    import urllib.parse as urlparse  # py36
 import user
 from collections import OrderedDict
 from contextlib import closing
@@ -19,9 +22,9 @@ from contextlib import closing
 import click
 from natsort import natsorted
 
-import constants as const
-import helper
-from files import (
+from . import constants as const
+from . import helper
+from .files import (
     TarFile,
     ZipFile,
     DirNode,
@@ -417,8 +420,8 @@ class LogExtractor(object):
                     (temp_log_name != log_name) or
                     (log_prefix != temp_log_prefix)
                 ):
-                    tests_iter = iter(self.tss.keys())
-                    cur_test_name = tests_iter.next()
+                    tests_iter = iter(list(self.tss.keys()))
+                    cur_test_name = next(tests_iter)
                     start_ts, end_ts, next_start_ts = self._define_tss(
                         test_name=cur_test_name
                     )
@@ -459,7 +462,7 @@ class LogExtractor(object):
                                 new_f.write(cur_t_file.read())
                             cur_t_file.close()
                             try:
-                                cur_test_name = tests_iter.next()
+                                cur_test_name = next(tests_iter)
                             except StopIteration:
                                 stop_parsing = True
                                 break
