@@ -6,11 +6,14 @@ Helper file for the log extractor
 """
 import logging
 import os
-from urllib2 import urlopen
+try:
+    from urllib2 import urlopen  # py27
+except ModuleNotFoundError:
+    from urllib.request import urlopen  # py36
 
 import pycurl
 
-import constants as const
+from . import constants as const
 
 logger = logging.getLogger(__file__)
 
