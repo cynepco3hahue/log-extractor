@@ -10,6 +10,7 @@ import logging
 import lzma
 import os
 import shutil
+import six
 import tempfile
 try:
     import urlparse  # py27
@@ -304,7 +305,7 @@ class LogExtractor(object):
             logger.info("parse file {0}".format(art_runner_file))
             with source_object.open(art_runner_file) as f:
                 for line in f:
-                    line = line.decode()
+                    line = decode_line(line)
                     setup_line = any(s in line for s in const.FIELDS_SETUP)
                     ignore_line = any(s in line for s in const.LINES_TO_IGNORE)
                     if ignore_line:
@@ -440,6 +441,7 @@ class LogExtractor(object):
                     f_pos = f.tell()
                     line = f.readline()
                     while line:
+                        line = decode_line(line)
                         ts = self._get_log_ts(line)
                         if (
                             (not ts and start_write) or
@@ -480,6 +482,12 @@ class LogExtractor(object):
                             line = f.readline()
                         except lzma.error:
                             break
+
+
+def decode_line(line):
+    if six.PY3 and type(line) == six.binary_type:
+        return line.decode()
+    return line
 
 
 @click.command()

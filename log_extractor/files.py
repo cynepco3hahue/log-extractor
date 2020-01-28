@@ -47,7 +47,7 @@ class TarFile(object):
 
             if filepath.endswith(".gz"):
                 return gzip.open(
-                    extracted_filepath, "r:gz"
+                    filename=extracted_filepath, mode="rb"
                 )
 
         return self.tf.extractfile(filepath)
