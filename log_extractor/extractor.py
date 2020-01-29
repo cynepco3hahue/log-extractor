@@ -10,12 +10,12 @@ import logging
 import lzma
 import os
 import shutil
+import six
 import tempfile
 try:
     import urlparse  # py27
 except ModuleNotFoundError:
     import urllib.parse as urlparse  # py36
-import user
 from collections import OrderedDict
 from contextlib import closing
 
@@ -305,6 +305,7 @@ class LogExtractor(object):
             logger.info("parse file {0}".format(art_runner_file))
             with source_object.open(art_runner_file) as f:
                 for line in f:
+                    line = decode_line(line)
                     setup_line = any(s in line for s in const.FIELDS_SETUP)
                     ignore_line = any(s in line for s in const.LINES_TO_IGNORE)
                     if ignore_line:
@@ -440,6 +441,7 @@ class LogExtractor(object):
                     f_pos = f.tell()
                     line = f.readline()
                     while line:
+                        line = decode_line(line)
                         ts = self._get_log_ts(line)
                         if (
                             (not ts and start_write) or
@@ -482,6 +484,12 @@ class LogExtractor(object):
                             break
 
 
+def decode_line(line):
+    if six.PY3 and type(line) == six.binary_type:
+        return line.decode()
+    return line
+
+
 @click.command()
 @click.option(
     "--source",
@@ -499,7 +507,7 @@ class LogExtractor(object):
         "Folder path to save the logs. In case source is url,"
         "the job name and build number will be appended to folder name."
     ),
-    default=os.path.join(user.home, "art-tests-logs")
+    default=os.path.join(os.path.expanduser('~'), "art-tests-logs")
 )
 @click.option(
     "--logs",

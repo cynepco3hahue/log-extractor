@@ -75,6 +75,5 @@ def configure_logging(log_output, verbose):
 
     logging.basicConfig(
         filename=log_output,
-        stream=None,
         level=log_level
     )
